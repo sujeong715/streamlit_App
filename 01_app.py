@@ -1,5 +1,4 @@
 import streamlit as st
-import requests
 import random
 
 # -----------------------------
@@ -12,7 +11,7 @@ st.set_page_config(
 )
 
 # -----------------------------
-# CSS
+# CSS (귀여운 디자인)
 # -----------------------------
 st.markdown("""
 <style>
@@ -22,42 +21,32 @@ st.markdown("""
 }
 
 h1{
-    color:#ff4d88;
     text-align:center;
-}
-
-h3{
-    text-align:center;
+    color:#ff5c8d;
 }
 
 .menu-box{
     background:white;
     padding:20px;
-    border-radius:20px;
-    box-shadow:0 5px 15px rgba(0,0,0,0.15);
+    border-radius:25px;
+    box-shadow:0px 6px 15px rgba(0,0,0,0.15);
     text-align:center;
 }
 
 .info-box{
-    background:#FFF4C9;
-    padding:20px;
-    border-radius:20px;
+    background:#FFF3CD;
+    padding:15px;
+    border-radius:15px;
     font-size:18px;
 }
 
-div.stButton > button{
-    width:100%;
-    height:55px;
-    border:none;
-    border-radius:20px;
+div.stButton>button{
     background:#FF8FAB;
     color:white;
+    border-radius:20px;
+    height:55px;
+    width:100%;
     font-size:20px;
-    font-weight:bold;
-}
-
-div.stButton > button:hover{
-    background:#ff5c8d;
 }
 
 </style>
@@ -66,6 +55,7 @@ div.stButton > button:hover{
 # -----------------------------
 # 메뉴 데이터
 # -----------------------------
+
 foods = {
 
     "맑음":[
@@ -146,59 +136,17 @@ foods = {
 }
 
 # -----------------------------
-# 서울 날씨 가져오기
+# 제목
 # -----------------------------
-API_KEY = st.secrets["OPENWEATHER_API_KEY"]
 
-def get_seoul_weather():
-
-    url = (
-        f"https://api.openweathermap.org/data/2.5/weather"
-        f"?q=Seoul&appid={API_KEY}&units=metric&lang=kr"
-    )
-
-    response = requests.get(url)
-
-    if response.status_code != 200:
-        return None, None
-
-    data = response.json()
-
-    weather = data["weather"][0]["main"]
-    temp = data["main"]["temp"]
-
-    if weather == "Rain":
-        weather_type = "비"
-
-    elif weather == "Snow":
-        weather_type = "눈"
-
-    elif temp >= 28:
-        weather_type = "더움"
-
-    elif temp <= 10:
-        weather_type = "추움"
-
-    else:
-        weather_type = "맑음"
-
-    return weather_type, temp
-
-
-# -----------------------------
-# 화면
-# -----------------------------
 st.title("🍓 오늘 뭐 먹지?")
-st.write("서울의 현재 날씨를 분석하여 메뉴를 추천합니다!")
 
-weather, temp = get_seoul_weather()
+st.write("🌈 날씨에 맞는 메뉴를 추천해드려요!")
 
-if weather is None:
-    st.error("날씨 정보를 가져오지 못했습니다.")
-    st.stop()
-
-st.success(f"📍 서울 현재 기온 : {temp:.1f}℃")
-st.info(f"🌤️ 추천 기준 날씨 : {weather}")
+weather = st.selectbox(
+    "오늘의 날씨를 선택하세요",
+    ["맑음","비","눈","더움","추움"]
+)
 
 if st.button("🍽️ 메뉴 추천받기"):
 
@@ -209,8 +157,11 @@ if st.button("🍽️ 메뉴 추천받기"):
     st.markdown(
         f"""
         <div class="menu-box">
-            <h2>{menu['name']}</h2>
+
+        <h2>💖 {menu["name"]}</h2>
+
         </div>
+
         """,
         unsafe_allow_html=True
     )
@@ -220,12 +171,12 @@ if st.button("🍽️ 메뉴 추천받기"):
         <div class="info-box">
 
         🔥 <b>칼로리</b><br>
-        {menu['calorie']}
+        {menu["calorie"]}
 
         <br><br>
 
         🥗 <b>영양소</b><br>
-        {menu['nutrition']}
+        {menu["nutrition"]}
 
         </div>
         """,
