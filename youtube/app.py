@@ -1,228 +1,113 @@
 youtube-comment-analyzer/
+
+│ app.py
+│ requirements.txt
+│ README.md
 │
-├── app.py
-├── youtube.py
-├── analysis.py
-├── wordcloud_util.py
-├── requirements.txt
-│
-├── assets/
-│   └── NanumGothic.ttf
+├── font/
+│      NanumGothic.ttf
 │
 └── .streamlit/
-    └── secrets.toml
-
-  import streamlit as st
+       secrets.toml
+streamlit
+google-api-python-client
+pandas
+numpy
+plotly
+wordcloud
+matplotlib
+Pillow
+konlpy
+API_KEY = st.secrets["YOUTUBE_API_KEY"]
+import streamlit as st
 import pandas as pd
 import plotly.express as px
-from youtube import get_video_id, get_video_info, get_comments
-from analysis import analyze_sentiment, prepare_timeline
-from wordcloud_util import generate_wordcloud
+
+from googleapiclient.discovery import build
 
 st.set_page_config(
     page_title="유튜브 댓글 분석기",
-    page_icon="📊",
+    page_icon="🎬",
     layout="wide"
 )
 
-st.title("📊 유튜브 댓글 분석기")
-st.markdown("유튜브 링크를 입력하면 댓글을 분석합니다.")
+st.title("🎬 유튜브 댓글 분석기")
 
-# secrets에서 API 키 읽기
+st.write(
+    "유튜브 영상의 댓글을 분석하여 "
+    "시간대별 추이, 반응도, 워드클라우드를 제공합니다."
+)
+
+# -----------------------------
+# API Key
+# -----------------------------
 API_KEY = st.secrets["YOUTUBE_API_KEY"]
 
+youtube = build(
+    "youtube",
+    "v3",
+    developerKey=API_KEY
+)
+
+# -----------------------------
+# 입력
+# -----------------------------
 url = st.text_input(
-    "유튜브 링크",
-    placeholder="https://www.youtube.com/watch?v=..."
+    "유튜브 영상 URL"
 )
 
 comment_count = st.slider(
-    "수집할 댓글 개수",
+    "가져올 댓글 개수",
     min_value=100,
-    max_value=5000,
-    value=500,
-    step=100
+    max_value=1000,
+    step=100,
+    value=300
 )
 
-if st.button("분석 시작"):
+analyze = st.button("댓글 분석 시작", use_container_width=True)
 
-    if not url:
-        st.error("유튜브 링크를 입력하세요.")
+# -----------------------------
+# 영상 표시
+# -----------------------------
+if url:
+
+    st.video(url)
+
+# -----------------------------
+# 버튼 클릭
+# -----------------------------
+if analyze:
+
+    if url == "":
+        st.warning("유튜브 URL을 입력하세요.")
         st.stop()
 
-    try:
-        video_id = get_video_id(url)
-
-        st.subheader("🎬 영상")
-        st.video(url)
-
-        with st.spinner("영상 정보 가져오는 중..."):
-            video_info = get_video_info(video_id, API_KEY)
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.metric("조회수", f"{video_info['viewCount']:,}")
-
-        with col2:
-            st.metric("좋아요", f"{video_info['likeCount']:,}")
-
-        with col3:
-            st.metric("댓글 수", f"{video_info['commentCount']:,}")
-
-        progress = st.progress(0)
-
-        with st.spinner("댓글 수집 중..."):
-            comments_df = get_comments(
-                video_id,
-                API_KEY,
-                comment_count,
-                progress
-            )
-
-        st.success(f"{len(comments_df)}개 댓글 수집 완료")
-
-        st.subheader("📄 댓글 데이터")
-
-        st.dataframe(
-            comments_df[
-                ["author", "publishedAt", "likeCount", "text"]
-            ].head(100)
-        )
-
-        csv = comments_df.to_csv(index=False).encode("utf-8-sig")
-
-        st.download_button(
-            "CSV 다운로드",
-            csv,
-            file_name="youtube_comments.csv",
-            mime="text/csv"
-        )
-
-        st.divider()
-
-        st.subheader("📈 시간대별 댓글 작성 추이")
-
-        timeline_df = prepare_timeline(comments_df)
-
-        fig = px.line(
-            timeline_df,
-            x="date",
-            y="count",
-            markers=True
-        )
-
-        st.plotly_chart(
-            fig,
-            use_container_width=True
-        )
-
-        st.divider()
-
-        st.subheader("😊 댓글 감성 분석")
-
-        sentiment_df, sentiment_count = analyze_sentiment(
-            comments_df
-        )
-
-        fig2 = px.pie(
-            values=sentiment_count.values(),
-            names=sentiment_count.keys(),
-            hole=0.4
-        )
-
-        st.plotly_chart(
-            fig2,
-            use_container_width=True
-        )
-
-        st.dataframe(
-            sentiment_df[
-                ["text", "sentiment"]
-            ].head(100)
-        )
-
-        st.divider()
-
-        st.subheader("☁️ 한글 워드클라우드")
-
-        wc_img = generate_wordcloud(
-            comments_df["text"].tolist()
-        )
-
-        st.image(
-            wc_img,
-            use_container_width=True
-        )
-
-    except Exception as e:
-        st.error(f"오류 발생: {e}")
-
-  import re
-import pandas as pd
-import streamlit as st
-
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-
-
-@st.cache_resource
-def youtube_client(api_key):
-    return build(
-        "youtube",
-        "v3",
-        developerKey=api_key
-    )
-
-
+    st.info("다음 단계에서 댓글을 수집합니다.")
+import re
+from urllib.parse import urlparse, parse_qs
 def get_video_id(url):
+    """
+    일반 유튜브 URL, Shorts, youtu.be 링크 모두 지원
+    """
 
-    patterns = [
-        r"v=([^&]+)",
-        r"youtu\.be/([^?]+)",
-        r"shorts/([^?]+)"
-    ]
+    if "youtu.be" in url:
+        return url.split("/")[-1].split("?")[0]
 
-    for p in patterns:
-        m = re.search(p, url)
-        if m:
-            return m.group(1)
+    if "shorts/" in url:
+        return url.split("shorts/")[1].split("?")[0]
 
-    raise Exception("유튜브 URL을 확인하세요.")
+    query = urlparse(url)
 
+    if query.hostname in [
+        "www.youtube.com",
+        "youtube.com",
+        "m.youtube.com"
+    ]:
+        return parse_qs(query.query).get("v", [None])[0]
 
-def get_video_info(video_id, api_key):
-
-    youtube = youtube_client(api_key)
-
-    request = youtube.videos().list(
-        part="statistics,snippet",
-        id=video_id
-    )
-
-    response = request.execute()
-
-    if len(response["items"]) == 0:
-        raise Exception("영상을 찾을 수 없습니다.")
-
-    item = response["items"][0]
-
-    stat = item["statistics"]
-
-    return {
-        "title": item["snippet"]["title"],
-        "viewCount": int(stat.get("viewCount", 0)),
-        "likeCount": int(stat.get("likeCount", 0)),
-        "commentCount": int(stat.get("commentCount", 0))
-    }
-
-
-def get_comments(video_id,
-                 api_key,
-                 max_comments,
-                 progress):
-
-    youtube = youtube_client(api_key)
+    return None
+    @st.cache_data(show_spinner=False)
+def get_comments(video_id, max_comments):
 
     comments = []
 
@@ -236,55 +121,231 @@ def get_comments(video_id,
             maxResults=100,
             pageToken=next_page,
             textFormat="plainText",
-            order="relevance"
+            order="time"
         )
 
-        try:
-            response = request.execute()
+        response = request.execute()
 
-        except HttpError:
-            raise Exception("댓글이 비활성화된 영상입니다.")
+        for item in response["items"]:
 
-        items = response.get("items", [])
-
-        if len(items) == 0:
-            break
-
-        for item in items:
-
-            c = item["snippet"]["topLevelComment"]["snippet"]
+            comment = item["snippet"]["topLevelComment"]["snippet"]
 
             comments.append({
-
-                "author": c["authorDisplayName"],
-
-                "text": c["textDisplay"],
-
-                "publishedAt": c["publishedAt"],
-
-                "likeCount": c["likeCount"]
-
+                "작성시간": comment["publishedAt"],
+                "작성자": comment["authorDisplayName"],
+                "댓글": comment["textDisplay"],
+                "좋아요": comment["likeCount"]
             })
 
             if len(comments) >= max_comments:
                 break
-
-        progress.progress(
-            min(len(comments) / max_comments, 1.0)
-        )
 
         next_page = response.get("nextPageToken")
 
         if next_page is None:
             break
 
-    df = pd.DataFrame(comments)
+    return pd.DataFrame(comments)
+    video_id = get_video_id(url)
 
-    df["publishedAt"] = pd.to_datetime(df["publishedAt"])
+if video_id is None:
+    st.error("올바른 유튜브 URL이 아닙니다.")
+    st.stop()
 
-    return df
+with st.spinner("댓글을 수집하는 중..."):
 
-google-api-python-client
-pandas
-streamlit
-plotly
+    df = get_comments(video_id, comment_count)
+
+if len(df) == 0:
+    st.warning("댓글이 없습니다.")
+    st.stop()
+
+st.success(f"{len(df)}개의 댓글을 수집했습니다.")
+
+st.dataframe(
+    df,
+    use_container_width=True,
+    height=500
+)
+from datetime import timedelta
+# UTC → 한국시간(KST)
+
+df["작성시간"] = pd.to_datetime(df["작성시간"], utc=True)
+
+df["작성시간"] = df["작성시간"] + timedelta(hours=9)
+
+df["날짜"] = df["작성시간"].dt.date
+
+df["시간"] = df["작성시간"].dt.hour
+
+df["요일"] = df["작성시간"].dt.day_name()
+hour_df = (
+    df.groupby("시간")
+      .size()
+      .reset_index(name="댓글수")
+)
+
+hour_df = hour_df.sort_values("시간")
+date_df = (
+    df.groupby("날짜")
+      .size()
+      .reset_index(name="댓글수")
+)
+st.subheader("🕒 시간대별 댓글 작성 추이")
+
+fig = px.bar(
+    hour_df,
+    x="시간",
+    y="댓글수",
+    text="댓글수"
+)
+
+fig.update_layout(
+    xaxis_title="시간",
+    yaxis_title="댓글 개수",
+    height=450
+)
+
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
+st.subheader("📅 날짜별 댓글 작성 추이")
+
+fig2 = px.line(
+    date_df,
+    x="날짜",
+    y="댓글수",
+    markers=True
+)
+
+fig2.update_layout(height=450)
+
+st.plotly_chart(
+    fig2,
+    use_container_width=True
+)
+col1, col2, col3 = st.columns(3)
+
+col1.metric(
+    "총 댓글",
+    len(df)
+)
+
+col2.metric(
+    "평균 좋아요",
+    round(df["좋아요"].mean(), 1)
+)
+
+peak = hour_df.loc[
+    hour_df["댓글수"].idxmax(),
+    "시간"
+]
+
+col3.metric(
+    "댓글 최다 시간",
+    f"{peak}시"
+)
+# 댓글 길이
+
+df["댓글길이"] = df["댓글"].astype(str).str.len()
+st.subheader("👍 댓글 반응도")
+
+c1, c2, c3 = st.columns(3)
+
+c1.metric(
+    "평균 좋아요",
+    round(df["좋아요"].mean(), 2)
+)
+
+c2.metric(
+    "최대 좋아요",
+    int(df["좋아요"].max())
+)
+
+c3.metric(
+    "좋아요 총합",
+    int(df["좋아요"].sum())
+)
+top_comments = (
+    df.sort_values("좋아요", ascending=False)
+      .head(20)
+)
+
+st.subheader("🏆 좋아요 TOP 20 댓글")
+
+st.dataframe(
+    top_comments[
+        ["좋아요", "작성자", "댓글"]
+    ],
+    use_container_width=True
+)
+fig = px.histogram(
+    df,
+    x="좋아요",
+    nbins=30,
+    title="좋아요 분포"
+)
+
+fig.update_layout(
+    height=450
+)
+
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
+fig = px.scatter(
+    df,
+    x="댓글길이",
+    y="좋아요",
+    hover_data=["작성자"]
+)
+
+fig.update_layout(
+    title="댓글 길이와 좋아요의 관계",
+    height=500
+)
+
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
+best = df.sort_values(
+    "좋아요",
+    ascending=False
+).iloc[0]
+
+st.subheader("🌟 가장 반응이 좋은 댓글")
+
+st.success(
+    f"""
+👤 작성자 : {best['작성자']}
+
+👍 좋아요 : {best['좋아요']}
+
+💬 댓글
+
+{best['댓글']}
+"""
+)
+author = (
+    df.groupby("작성자")
+      .size()
+      .reset_index(name="댓글수")
+      .sort_values("댓글수", ascending=False)
+      .head(10)
+)
+
+fig = px.bar(
+    author,
+    x="작성자",
+    y="댓글수",
+    text="댓글수",
+    title="댓글을 많이 작성한 사용자"
+)
+
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
